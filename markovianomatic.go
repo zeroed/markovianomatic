@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -70,16 +72,43 @@ func (c *Chain) Build(r io.Reader) {
 		if _, err := fmt.Fscan(br, &s); err != nil {
 			break
 		}
-		s = strings.ToLower(s)
-		key := p.String()
-		c.lock.Lock()
-		c.chain[key] = append(c.chain[key], s)
-		p.Shift(s)
-		c.lock.Unlock()
+		c.insert(s, &p)
+	}
+}
+
+func (c *Chain) insert(s string, p *Prefix) {
+	s = strings.ToLower(s)
+	key := p.String()
+	c.lock.Lock()
+	c.chain[key] = append(c.chain[key], s)
+	p.Shift(s)
+	c.lock.Unlock()
+}
+
+//Load reads the content from a file and build a Chain
+func (c *Chain) Load(name string) {
+	file, err := os.Open(name)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	p := make(Prefix, c.prefixLen)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		c.insert(scanner.Text(), &p)
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
 	}
 }
 
 // Generate returns a string of at most n words generated from Chain.
+// The Generate function does a lot of allocations when it builds the words
+// slice. As an exercise, modify it to take an io.Writer to which it
+// incrementally writes the generated text with Fprint. Aside from being more
+// efficient this makes Generate more symmetrical to Build.
 func (c *Chain) Generate(n int) string {
 	if n < 1 {
 		panic("Refix too short")
