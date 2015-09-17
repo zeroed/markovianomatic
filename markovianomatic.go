@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
 	"sync"
@@ -67,6 +68,18 @@ func (c *Chain) Prefixes() (pxs []string) {
 func (c *Chain) Build(r io.Reader) {
 	br := bufio.NewReader(r)
 	p := make(Prefix, c.prefixLen)
+
+	signalChan := make(chan os.Signal, 1)
+	// cleanupDone := make(chan bool)
+	signal.Notify(signalChan, os.Interrupt)
+	go func() {
+		for _ = range signalChan {
+			fmt.Println("\nReceived an interrupt, stopping services...\n")
+			// cleanup(services, c)
+			// cleanupDone <- true
+		}
+	}()
+
 	for {
 		var s string
 		if _, err := fmt.Fscan(br, &s); err != nil {
@@ -74,6 +87,9 @@ func (c *Chain) Build(r io.Reader) {
 		}
 		c.insert(s, &p)
 	}
+
+	// <-cleanupDone
+	return
 }
 
 func (c *Chain) insert(s string, p *Prefix) {
@@ -110,6 +126,7 @@ func (c *Chain) Load(name string) {
 // incrementally writes the generated text with Fprint. Aside from being more
 // efficient this makes Generate more symmetrical to Build.
 func (c *Chain) Generate(n int) string {
+	fmt.Fprintf(os.Stdout, "%d prefixes \n ... generating text ...\n", c.Length())
 	if n < 1 {
 		panic("Refix too short")
 	}
