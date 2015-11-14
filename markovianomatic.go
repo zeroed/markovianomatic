@@ -8,23 +8,51 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 )
 
+type StringMap map[string][]string
+
 // Chain contains a map ("chain") of prefixes to a list of suffixes.
 // A prefix is a string of prefixLen words joined with spaces.
 // A suffix is a single word. A prefix can have multiple suffixes.
 type Chain struct {
-	chain     map[string][]string
+	chain     StringMap
+	starters  []string
 	prefixLen int
+	verbose   bool
 	lock      *sync.RWMutex
 }
 
 // NewChain returns a new Chain with prefixes of prefixLen words.
-func NewChain(prefixLen int) *Chain {
-	return &Chain{make(map[string][]string), prefixLen, &sync.RWMutex{}}
+func NewChain(prefixLen int, verbose bool) *Chain {
+	c := new(Chain)
+	c.chain = make(StringMap)
+	c.prefixLen = prefixLen
+	c.verbose = verbose
+	c.lock = &sync.RWMutex{}
+	return c
+}
+
+// Keys return the list of keys in the chain
+func (c *Chain) Keys() []string {
+	var keys []string
+	for k := range c.chain {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// Rkey return a random key from the chain starters
+func (c *Chain) RKey() string {
+	if l := len(c.starters); l > 0 {
+		return c.starters[rand.Intn(l)]
+	} else {
+		return ""
+	}
 }
 
 // String return a printable representation of the Chain
@@ -48,6 +76,17 @@ func (c *Chain) Length() int {
 	return len(c.chain)
 }
 
+// Pretty is a pretty print of a chain
+func (c *Chain) Pretty() {
+	ks := c.Keys()
+	sort.Strings(ks)
+	fmt.Fprintf(os.Stdout, ":--------------\n")
+	for i, x := range ks {
+		fmt.Fprintf(os.Stdout, "\033[0;37m%03d\033[0m [\033[0;32m%s\033[0m] -> \033[0;33m%s\033[0m\n", i, x, c.chain[x])
+	}
+	fmt.Fprintf(os.Stdout, "--------------\n")
+}
+
 // Prefix returns a value corresponding to a given prefix.
 func (c *Chain) Prefix(k string) []string {
 	return c.chain[k]
@@ -55,48 +94,79 @@ func (c *Chain) Prefix(k string) []string {
 
 // Prefixes return the list of all the prefixes in the chain
 func (c *Chain) Prefixes() (pxs []string) {
-	var keys []string
-	for k := range c.chain {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
+	k := c.Keys()
+	sort.Strings(k)
+	return k
 }
 
 // Build reads text from the provided Reader and
 // parses it into prefixes and suffixes that are stored in Chain.
 func (c *Chain) Build(r io.Reader) {
-	br := bufio.NewReader(r)
-	p := make(Prefix, c.prefixLen)
+	fmt.Fprintf(os.Stdout, "-- Markovianomatic live -- \n\ntype your text (Enter x2 to stop)...\n\n")
 
-	signalChan := make(chan os.Signal, 1)
-	// cleanupDone := make(chan bool)
-	signal.Notify(signalChan, os.Interrupt)
+	pf := make(Prefix, c.prefixLen)
+	qc := make(chan bool, 1)
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, os.Interrupt)
+
 	go func() {
-		for _ = range signalChan {
-			fmt.Println("\nReceived an interrupt, stopping services...\n")
-			// cleanup(services, c)
-			// cleanupDone <- true
+		for _ = range sc {
+			if c.verbose {
+				fmt.Fprintf(os.Stdout, "\nReceived an interrupt, stopping services...\n")
+			}
+			qc <- true
+			break
 		}
 	}()
 
-	for {
+	go func() {
+		i := 0
 		var s string
-		if _, err := fmt.Fscan(br, &s); err != nil {
-			break
-		}
-		c.insert(s, &p)
-	}
+		br := bufio.NewReader(r)
 
-	// <-cleanupDone
+		for {
+			if n, err := fmt.Fscanf(br, "%s\n", &s); n > 0 {
+				i = 0
+				c.insert(s, &pf)
+			} else {
+				i += 1
+				if err != nil && err.Error() != "unexpected newline" {
+					fmt.Fprintf(os.Stderr, "Scan error: %s\n", err.Error())
+				} else {
+					if c.verbose {
+						fmt.Fprintf(os.Stderr, "Write empty (%d)\n", i)
+					}
+				}
+			}
+
+			if i == 2 {
+				qc <- true
+				break
+			}
+		}
+	}()
+
+	<-qc
 	return
 }
 
 func (c *Chain) insert(s string, p *Prefix) {
-	s = strings.ToLower(s)
 	key := p.String()
+	s = sanitise(s)
+
 	c.lock.Lock()
-	c.chain[key] = append(c.chain[key], s)
+	if c.verbose {
+		fmt.Fprintf(os.Stdout, "Association: |%s| -> [%s]\n", key, s)
+	}
+	if key != " " {
+		c.chain[key] = append(c.chain[key], s)
+	}
+	if strings.HasPrefix(key, " ") && regexp.MustCompile(`\s\w`).MatchString(key) == true {
+		if c.verbose {
+			fmt.Fprintf(os.Stdout, "New starter: [%s]\n", key)
+		}
+		c.starters = append(c.starters, key)
+	}
 	p.Shift(s)
 	c.lock.Unlock()
 }
@@ -112,7 +182,9 @@ func (c *Chain) Load(name string) {
 	p := make(Prefix, c.prefixLen)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		c.insert(scanner.Text(), &p)
+		for _, w := range strings.Fields(scanner.Text()) {
+			c.insert(w, &p)
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -120,26 +192,73 @@ func (c *Chain) Load(name string) {
 	}
 }
 
-// Generate returns a string of at most n words generated from Chain.
-// The Generate function does a lot of allocations when it builds the words
-// slice. As an exercise, modify it to take an io.Writer to which it
-// incrementally writes the generated text with Fprint. Aside from being more
-// efficient this makes Generate more symmetrical to Build.
-func (c *Chain) Generate(n int) string {
-	fmt.Fprintf(os.Stdout, "%d prefixes \n ... generating text ...\n", c.Length())
-	if n < 1 {
-		panic("Refix too short")
+func downcase(s *string) {
+	*s = strings.ToLower(*s)
+}
+
+func isCapital(s string) bool {
+	if string(s[0]) == strings.ToLower(string(s[0])) {
+		return false
 	}
-	p := make(Prefix, c.prefixLen)
-	var words []string
+	return true
+}
+
+func hasEnding(s *string) bool {
+	return strings.Contains(*s, ".")
+}
+
+func sanitise(s string) string {
+	reg, err := regexp.Compile("[^A-Za-z0-9éèàìòù]+")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	s = reg.ReplaceAllString(s, "")
+	s = strings.ToLower(strings.Trim(s, "-"))
+	return s
+}
+
+// Generate returns a string of at most n words generated from Chain.
+func (c *Chain) Generate(w io.Writer, n int) io.Writer {
+	c.Pretty()
+
+	if n < 1 {
+		panic("Prefix too short")
+	} else {
+		fmt.Fprintf(os.Stdout, "%d prefixes, prefixes %d long. generating text ...\n", c.Length(), c.prefixLen)
+	}
+
+	p := NewPrefix(c.prefixLen)
+
+	var k string
+	var choices []string
+	k = c.RKey()
 	for i := 0; i < n; i++ {
-		choices := c.chain[p.String()]
+		choices = c.chain[k]
+
+		if c.verbose {
+			fmt.Fprintf(os.Stdout, "Current key: [%s], choices: %s\n", k, choices)
+			fmt.Fprintf(os.Stdout, "%02d iteration: prefix [%s]\n", i, p.String())
+		}
+
 		if len(choices) == 0 {
+			fmt.Printf("No more choices!\n")
 			break
 		}
+
 		next := choices[rand.Intn(len(choices))]
-		words = append(words, next)
+
+		if c.verbose {
+			fmt.Printf("Next: [%s]\n", next)
+		}
+		w.Write([]byte(next))
+		w.Write([]byte(" "))
+
+		if i == 0 {
+			p.Shift(k)
+		}
 		p.Shift(next)
+		k = p.String()
 	}
-	return strings.Join(words, " ")
+	return w
 }
