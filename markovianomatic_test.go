@@ -89,7 +89,11 @@ func TestBuild(t *testing.T) {
 	}
 }
 
+func TestIsCapital(t *testing.T) {
+
+}
+
 func TestGenerate(t *testing.T) {
 	aChain := buildAChain()
-	fmt.Println(aChain.Generate(20))
+	fmt.Println(aChain.Generate(new(bytes.Buffer), 20))
 }
