@@ -1,5 +1,11 @@
 package markovianomatic
 
+// TODO: save and load initial dictionary
+// DONE: keep list on values (do not lose the weight)
+// DONE: tabulation in printing
+// TODO: more filters
+// TODO: check correctness
+
 import (
 	"bufio"
 	"fmt"
