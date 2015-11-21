@@ -170,6 +170,31 @@ func (c *Chain) Build(r io.Reader) {
 	return
 }
 
+func timeName() string {
+	t := time.Now().UTC()
+	s := fmt.Sprintf("%d%02d%02dT%02d%02d%02d",
+		t.Year(), t.Month(), t.Day(),
+		t.Hour(), t.Minute(), t.Second())
+	return fmt.Sprintf("dict_%s", s)
+}
+
+// Save persist the chain on the disk
+func (c *Chain) Save() {
+	cn := timeName()
+	sess, coll := model.Connect(cn)
+
+	defer sess.Close()
+
+	ks := c.Keys()
+	sort.Strings(ks)
+	for _, x := range ks {
+		if c.verbose {
+			fmt.Fprintf(os.Stdout, "Saving %s \n", x)
+		}
+		model.NewNode(x, c.chain[x]).Save(coll)
+	}
+}
+
 func (c *Chain) insert(s string, p *Prefix) {
 	key := p.String()
 	s = sanitise(s)
@@ -241,7 +266,7 @@ func sanitise(s string) string {
 // Generate returns a string of at most n words generated from Chain.
 func (c *Chain) Generate(w io.Writer, n int) io.Writer {
 	c.Pretty()
-
+	c.Save()
 	if n < 1 {
 		panic("Prefix too short")
 	} else {
