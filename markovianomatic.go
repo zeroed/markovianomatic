@@ -18,6 +18,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/gosuri/uitable"
+	"github.com/zeroed/markovianomatic/model"
 )
 
 type StringMap map[string][]string
