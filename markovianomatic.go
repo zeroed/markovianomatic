@@ -90,11 +90,21 @@ func (c *Chain) Length() int {
 func (c *Chain) Pretty() {
 	ks := c.Keys()
 	sort.Strings(ks)
-	fmt.Fprintf(os.Stdout, ":--------------\n")
-	for i, x := range ks {
-		fmt.Fprintf(os.Stdout, "\033[0;37m%03d\033[0m [\033[0;32m%s\033[0m] -> \033[0;33m%s\033[0m\n", i, x, c.chain[x])
-	}
 	fmt.Fprintf(os.Stdout, "--------------\n")
+
+	table := uitable.New()
+	table.MaxColWidth = 50
+
+	table.AddRow("Index", "Prefix key", "Available choices")
+	for i, x := range ks {
+		table.AddRow(
+			fmt.Sprintf("\033[0;37m %03d \033[0m", i),
+			fmt.Sprintf("\033[0;32m %s \033[0m", x),
+			fmt.Sprintf("\033[0;33m %s \033[0m", c.chain[x]))
+	}
+
+	fmt.Fprintf(os.Stdout, table.String())
+	fmt.Fprintf(os.Stdout, "\n--------------\n")
 }
 
 // Prefix returns a value corresponding to a given prefix.
