@@ -5,6 +5,7 @@ package markovianomatic
 // DONE: tabulation in printing
 // TODO: more filters
 // TODO: check correctness
+// TODO: table menu: load/new/destroy
 
 import (
 	"bufio"
@@ -20,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gosuri/uiprogress"
 	"github.com/gosuri/uitable"
 	"github.com/zeroed/markovianomatic/model"
 )
@@ -86,6 +88,18 @@ func (c *Chain) Length() int {
 	return len(c.chain)
 }
 
+// Prefix returns a value corresponding to a given prefix.
+func (c *Chain) Prefix(k string) []string {
+	return c.chain[k]
+}
+
+// Prefixes return the list of all the prefixes in the chain
+func (c *Chain) Prefixes() (pxs []string) {
+	k := c.Keys()
+	sort.Strings(k)
+	return k
+}
+
 // Pretty is a pretty print of a chain
 func (c *Chain) Pretty() {
 	ks := c.Keys()
@@ -94,6 +108,7 @@ func (c *Chain) Pretty() {
 
 	table := uitable.New()
 	table.MaxColWidth = 50
+	table.Separator = "|"
 
 	table.AddRow("Index", "Prefix key", "Available choices")
 	for i, x := range ks {
@@ -107,16 +122,7 @@ func (c *Chain) Pretty() {
 	fmt.Fprintf(os.Stdout, "\n--------------\n")
 }
 
-// Prefix returns a value corresponding to a given prefix.
-func (c *Chain) Prefix(k string) []string {
-	return c.chain[k]
-}
-
-// Prefixes return the list of all the prefixes in the chain
-func (c *Chain) Prefixes() (pxs []string) {
-	k := c.Keys()
-	sort.Strings(k)
-	return k
+func Restore() {
 }
 
 // Build reads text from the provided Reader and
@@ -187,10 +193,15 @@ func (c *Chain) Save() {
 
 	ks := c.Keys()
 	sort.Strings(ks)
+
+	fmt.Fprintf(os.Stdout, "Loading...")
+
+	uiprogress.Start()
+	bar := uiprogress.AddBar(len(ks))
+	bar.AppendCompleted()
+	bar.PrependElapsed()
 	for _, x := range ks {
-		if c.verbose {
-			fmt.Fprintf(os.Stdout, "Saving %s \n", x)
-		}
+		bar.Incr()
 		model.NewNode(x, c.chain[x]).Save(coll)
 	}
 }
@@ -201,7 +212,7 @@ func (c *Chain) insert(s string, p *Prefix) {
 
 	c.lock.Lock()
 	if c.verbose {
-		fmt.Fprintf(os.Stdout, "Association: |%s| -> [%s]\n", key, s)
+		fmt.Fprintf(os.Stdout, "\033[0;34m Association: |%s| -> [%s]\033[0m\n", key, s)
 	}
 	if key != " " {
 		c.chain[key] = append(c.chain[key], s)
