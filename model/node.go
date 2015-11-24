@@ -31,10 +31,29 @@ func connect() (sess *mgo.Session, err error) {
 	return
 }
 
+func Collections(db *mgo.Database) (names []string, err error) {
+	all, err := db.CollectionNames()
+	if err != nil {
+		return
+	}
+
+	for _, x := range all {
+		if x != "system.indexes" {
+			names = append(names, x)
+		}
+	}
+	return
+}
+
 func Connect(cn string) (sess *mgo.Session, coll *mgo.Collection) {
 	sess, _ = connect()
 	coll = sess.DB("markovianomatic").C(cn)
 	return
+}
+
+func Database() *mgo.Database {
+	sess, _ := connect()
+	return sess.DB("markovianomatic")
 }
 
 func NewNode(k string, v []string) *Node {
@@ -63,3 +82,10 @@ func (n *Node) Save(coll *mgo.Collection) bool {
 	}
 	return true
 }
+
+//func withDBContext(fn func(db DB)) error {
+// get a db connection from the connection pool
+// dbConn := NewDB()
+
+// return fn(dbConn)
+// }
