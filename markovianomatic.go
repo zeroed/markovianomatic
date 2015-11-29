@@ -32,19 +32,21 @@ type StringMap map[string][]string
 // A prefix is a string of prefixLen words joined with spaces.
 // A suffix is a single word. A prefix can have multiple suffixes.
 type Chain struct {
-	chain     StringMap
-	starters  []string
-	prefixLen int
-	verbose   bool
-	lock      *sync.RWMutex
+	chain      StringMap
+	starters   []string
+	prefixLen  int
+	verbose    bool
+	collection string
+	lock       *sync.RWMutex
 }
 
 // NewChain returns a new Chain with prefixes of prefixLen words.
-func NewChain(prefixLen int, verbose bool) *Chain {
+func NewChain(prefixLen int, verbose bool, cn string) *Chain {
 	c := new(Chain)
 	c.chain = make(StringMap)
 	c.prefixLen = prefixLen
 	c.verbose = verbose
+	c.collection = cn
 	c.lock = &sync.RWMutex{}
 	return c
 }
@@ -122,7 +124,21 @@ func (c *Chain) Pretty() {
 	fmt.Fprintf(os.Stdout, "\n--------------\n")
 }
 
-func Restore() {
+// func (c *Chain) Restore(sm StringMap) {
+// }
+
+func (c *Chain) append(k string, s string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if k != " " {
+		c.chain[k] = append(c.chain[k], s)
+	}
+	if strings.HasPrefix(k, " ") && regexp.MustCompile(`\s\w`).MatchString(k) == true {
+		if c.verbose {
+			fmt.Fprintf(os.Stdout, "New starter: [%s]\n", k)
+		}
+		c.starters = append(c.starters, k)
+	}
 }
 
 // Build reads text from the provided Reader and
@@ -187,6 +203,7 @@ func timeName() string {
 // Save persist the chain on the disk
 func (c *Chain) Save() {
 	cn := timeName()
+	c.collection = cn
 	sess, coll := model.Connect(cn)
 
 	defer sess.Close()
@@ -207,24 +224,15 @@ func (c *Chain) Save() {
 }
 
 func (c *Chain) insert(s string, p *Prefix) {
-	key := p.String()
+	k := p.String()
 	s = sanitise(s)
 
-	c.lock.Lock()
 	if c.verbose {
-		fmt.Fprintf(os.Stdout, "\033[0;34m Association: |%s| -> [%s]\033[0m\n", key, s)
+		fmt.Fprintf(os.Stdout, "\033[0;34m Association: |%s| -> [%s]\033[0m\n", k, s)
 	}
-	if key != " " {
-		c.chain[key] = append(c.chain[key], s)
-	}
-	if strings.HasPrefix(key, " ") && regexp.MustCompile(`\s\w`).MatchString(key) == true {
-		if c.verbose {
-			fmt.Fprintf(os.Stdout, "New starter: [%s]\n", key)
-		}
-		c.starters = append(c.starters, key)
-	}
+
+	c.append(k, s)
 	p.Shift(s)
-	c.lock.Unlock()
 }
 
 //Load reads the content from a file and build a Chain
@@ -277,7 +285,9 @@ func sanitise(s string) string {
 // Generate returns a string of at most n words generated from Chain.
 func (c *Chain) Generate(w io.Writer, n int) io.Writer {
 	c.Pretty()
-	c.Save()
+	if c.collection == "" {
+		c.Save()
+	}
 	if n < 1 {
 		panic("Prefix too short")
 	} else {
@@ -317,4 +327,19 @@ func (c *Chain) Generate(w io.Writer, n int) io.Writer {
 		k = p.String()
 	}
 	return w
+}
+
+func (c *Chain) Set(k string, v []string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if k != " " {
+		c.chain[k] = v
+	}
+	// TODO: centralize starters
+	if strings.HasPrefix(k, " ") && regexp.MustCompile(`\s\w`).MatchString(k) == true {
+		if c.verbose {
+			fmt.Fprintf(os.Stdout, "New starter: [%s]\n", k)
+		}
+		c.starters = append(c.starters, k)
+	}
 }
