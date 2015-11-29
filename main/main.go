@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	"gopkg.in/mgo.v2/bson"
+
 	"github.com/codegangsta/cli"
 	"github.com/zeroed/markovianomatic"
 	"github.com/zeroed/markovianomatic/model"
@@ -56,35 +58,46 @@ func main() {
 	app.Action = func(cc *cli.Context) {
 
 		var c *markovianomatic.Chain
-		fmt.Fprintf(os.Stdout, "Want to use an existing DB? [Y/n] ")
+		fmt.Fprintf(os.Stdout, "Want to [use/append/delete] an existing DB? [no(new)] ")
 		if askForConfirmation() {
+			// use/append/delete here
 
 			cns, _ := model.Collections(model.Database())
 			if len(cns) == 0 {
 				fmt.Fprintf(os.Stderr, "There are no available PrefixBase. Start from scratch\n")
-				c = markovianomatic.NewChain(prefixLen, verbose)
+				c = markovianomatic.NewChain(prefixLen, verbose, "")
 			} else {
-
 				for i, cn := range cns {
-					fmt.Fprintf(os.Stdout, "[%d] %s\n", i, cn)
+					fmt.Fprintf(os.Stdout, "[%d] %s\n[0/%02d]: ", i, cn, len(cns)-1)
 				}
+				fmt.Fprintf(os.Stdout, "")
 				var i int
 				fmt.Scanf("%d", &i)
 
-				if i > 0 && i <= len(cns) {
-					fmt.Fprintf(os.Stdout, "Using %s\n", cns[i])
+				if i >= 0 && i < len(cns) {
 					_, dbc := model.Connect(cns[i])
 					lc, _ := dbc.Count()
-					fmt.Fprintf(os.Stdout, "With %d prefixes\n", lc)
-				} else {
+					fmt.Fprintf(os.Stdout, "Using %s with %d prefixes\n", cns[i], lc)
 
+					c = markovianomatic.NewChain(prefixLen, verbose, cns[i])
+					iter := dbc.Find(bson.M{}).Iter()
+					var node model.Node
+					for iter.Next(&node) {
+						c.Set(node.Key, node.Choices)
+					}
+					if err := iter.Close(); err != nil {
+						fmt.Fprint(os.Stderr, "Error iterating the collection: %s\n", err.Error())
+						os.Exit(1)
+					}
+				} else {
 					fmt.Fprintf(os.Stderr, "Nope")
 					//TODO recover
 					os.Exit(1)
 				}
 			}
 		} else {
-			c = markovianomatic.NewChain(prefixLen, verbose)
+			// no/new here
+			c = markovianomatic.NewChain(prefixLen, verbose, "")
 		}
 
 		if len(file) == 0 {
@@ -119,6 +132,7 @@ func askForConfirmation() bool {
 
 	okayResponses := []string{"y", "Y", "yes", "Yes", "YES"}
 	nokayResponses := []string{"n", "N", "no", "No", "NO"}
+	// deleteResponses := []string{"d", "D", "delete", "Delete", "del", "DELETE"}
 	if containsString(okayResponses, response) {
 		return true
 	} else if containsString(nokayResponses, response) {
