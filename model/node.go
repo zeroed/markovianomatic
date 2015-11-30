@@ -48,6 +48,20 @@ func Collections(db *mgo.Database) (names []string, err error) {
 func Connect(cn string) (sess *mgo.Session, coll *mgo.Collection) {
 	sess, _ = connect()
 	coll = sess.DB("markovianomatic").C(cn)
+
+	index := mgo.Index{
+		Key:        []string{"key"},
+		Unique:     true,
+		DropDups:   true,
+		Background: true,
+		Sparse:     true,
+	}
+
+	err := coll.EnsureIndex(index)
+	if err != nil {
+		panic(err)
+	}
+
 	return
 }
 
@@ -63,6 +77,9 @@ func NewNode(k string, v []string) *Node {
 		Choices: v}
 }
 
+// Save persist a node into the given collection.
+// If the node exists already, the choices are pushed, keeping the
+// statistica weight (no unique/sort/deletion are made)
 func (n *Node) Save(coll *mgo.Collection) bool {
 	var nn *Node
 	err := coll.Find(

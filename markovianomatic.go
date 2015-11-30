@@ -200,10 +200,14 @@ func timeName() string {
 	return fmt.Sprintf("dict_%s", s)
 }
 
-// Save persist the chain on the disk
+// Save method persist (save or update) the chain on the disk
 func (c *Chain) Save() {
-	cn := timeName()
-	c.collection = cn
+	var cn string = c.collection
+	if c.collection == "" {
+		cn = timeName()
+		c.collection = cn
+	}
+
 	sess, coll := model.Connect(cn)
 
 	defer sess.Close()
@@ -284,10 +288,14 @@ func sanitise(s string) string {
 
 // Generate returns a string of at most n words generated from Chain.
 func (c *Chain) Generate(w io.Writer, n int) io.Writer {
-	c.Pretty()
-	if c.collection == "" {
+	if len(c.Keys()) > 0 {
+		c.Pretty()
 		c.Save()
+	} else {
+		fmt.Fprintf(os.Stdout, "Empty text map. Cannot generate text\n", c.Length(), c.prefixLen)
+		return w
 	}
+
 	if n < 1 {
 		panic("Prefix too short")
 	} else {
