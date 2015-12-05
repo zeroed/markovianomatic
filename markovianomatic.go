@@ -299,7 +299,7 @@ func (c *Chain) Generate(w io.Writer, n int) io.Writer {
 		c.Pretty()
 		c.Save()
 	} else {
-		fmt.Fprintf(os.Stdout, "Empty text map. Cannot generate text\n", c.Length(), c.prefixLen)
+		fmt.Fprintf(os.Stdout, "Empty text map. Cannot generate text\n")
 		return w
 	}
 
