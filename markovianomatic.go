@@ -229,7 +229,7 @@ func (c *Chain) Save() {
 
 func (c *Chain) insert(s string, p *Prefix) {
 	k := p.String()
-	s = sanitise(s)
+	s = sanitise(s, false)
 
 	if c.verbose {
 		fmt.Fprintf(os.Stdout, "\033[0;34m Association: |%s| -> [%s]\033[0m\n", k, s)
@@ -275,8 +275,15 @@ func hasEnding(s *string) bool {
 	return strings.Contains(*s, ".")
 }
 
-func sanitise(s string) string {
-	reg, err := regexp.Compile("[^A-Za-z0-9éèàìòù]+")
+func sanitise(s string, strict bool) string {
+	var reg *regexp.Regexp
+	var err error
+
+	if strict {
+		reg, err = regexp.Compile("[^A-Za-z0-9]+")
+	} else {
+		reg, err = regexp.Compile("[^A-Za-z0-9éèàìòù]+")
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
