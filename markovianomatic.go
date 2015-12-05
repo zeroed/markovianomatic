@@ -46,7 +46,7 @@ func NewChain(prefixLen int, verbose bool, cn string) *Chain {
 	c.chain = make(StringMap)
 	c.prefixLen = prefixLen
 	c.verbose = verbose
-	c.collection = cn
+	c.collection = sanitise(cn, true)
 	c.lock = &sync.RWMutex{}
 	return c
 }
