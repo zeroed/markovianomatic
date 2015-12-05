@@ -62,44 +62,53 @@ func main() {
 		cns, _ := model.Collections(model.Database())
 		if len(cns) == 0 {
 			fmt.Fprintf(os.Stderr, "There are no available PrefixBase. Start from scratch\n")
-			c = markovianomatic.NewChain(prefixLen, verbose, "")
+
+			var cn string
+			fmt.Scanf("%s", &cn)
+			c = markovianomatic.NewChain(prefixLen, verbose, cn)
 		} else {
-		}
+			fmt.Fprintf(os.Stdout, "Want to [use/append/delete] an existing DB? [no(new)] ")
+			if askForConfirmation() {
+				// use/append/delete here
 
-		fmt.Fprintf(os.Stdout, "Want to [use/append/delete] an existing DB? [no(new)] ")
-		if askForConfirmation() {
-			// use/append/delete here
-
-			for i, cn := range cns {
-				fmt.Fprintf(os.Stdout, "[%d] %s\n", i, cn)
-			}
-		ask:
-			fmt.Fprintf(os.Stdout, "[0-%02d]: ", len(cns)-1)
-			var i int
-			// TODO: fix when literal
-			fmt.Scanf("%d", &i)
-
-			if i >= 0 && i < len(cns) {
-				_, dbc := model.Connect(cns[i])
-				lc, _ := dbc.Count()
-				fmt.Fprintf(os.Stdout, "Using %s with %d prefixes\n", cns[i], lc)
-
-				c = markovianomatic.NewChain(prefixLen, verbose, cns[i])
-				iter := dbc.Find(bson.M{}).Iter()
-				var node model.Node
-				for iter.Next(&node) {
-					c.Set(node.Key, node.Choices)
+				for i, cn := range cns {
+					fmt.Fprintf(os.Stdout, "[%d] %s\n", i, cn)
 				}
-				if err := iter.Close(); err != nil {
-					fmt.Fprint(os.Stderr, "Error iterating the collection: %s\n", err.Error())
-					os.Exit(1)
+				fmt.Fprintf(os.Stdout, "----\n")
+			ask:
+				fmt.Fprintf(os.Stdout, "[0-%02d]: ", len(cns)-1)
+				var i int
+				_, err := fmt.Scanf("%d", &i)
+				if err != nil {
+					goto ask
+				}
+
+				if i >= 0 && i < len(cns) {
+					_, dbc := model.Connect(cns[i])
+					lc, _ := dbc.Count()
+					fmt.Fprintf(os.Stdout, "Using %s with %d prefixes\n", cns[i], lc)
+
+					c = markovianomatic.NewChain(prefixLen, verbose, cns[i])
+					iter := dbc.Find(bson.M{}).Iter()
+					var node model.Node
+					for iter.Next(&node) {
+						c.Set(node.Key, node.Choices)
+					}
+					if err := iter.Close(); err != nil {
+						fmt.Fprint(os.Stderr, "Error iterating the collection: %s\n", err.Error())
+						os.Exit(1)
+					}
+				} else {
+					goto ask
 				}
 			} else {
-				goto ask
+				// no/new here
+
+				fmt.Fprintf(os.Stdout, "Collection name: ")
+				var cn string
+				fmt.Scanf("%s", &cn)
+				c = markovianomatic.NewChain(prefixLen, verbose, cn)
 			}
-		} else {
-			// no/new here
-			c = markovianomatic.NewChain(prefixLen, verbose, "")
 		}
 
 		if len(file) == 0 {
