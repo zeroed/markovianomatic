@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
 	"github.com/codegangsta/cli"
@@ -19,15 +20,14 @@ import (
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
-
-	app := cli.NewApp()
-	app.Name = "Markovianomatic"
-	app.Usage = "Build a random text with Markov-ish rules"
-
 	var numWords int
 	var prefixLen int
 	var file string
 	var verbose bool
+
+	app := cli.NewApp()
+	app.Name = "Markovianomatic"
+	app.Usage = "Build a random text with Markov-ish rules"
 
 	app.Flags = []cli.Flag{
 		cli.IntFlag{
@@ -56,58 +56,19 @@ func main() {
 	}
 
 	app.Action = func(cc *cli.Context) {
-
 		var c *markovianomatic.Chain
-
 		cns, _ := model.Collections(model.Database())
+
 		if len(cns) == 0 {
 			fmt.Fprintf(os.Stderr, "There are no available PrefixBase. Start from scratch\n")
-
-			var cn string
-			fmt.Scanf("%s", &cn)
-			c = markovianomatic.NewChain(prefixLen, verbose, cn)
+			c = newEmptyChain(prefixLen, verbose)
 		} else {
 			fmt.Fprintf(os.Stdout, "Want to [use/append/delete] an existing DB? [no(new)] ")
 			if askForConfirmation() {
-				// use/append/delete here
-
-				for i, cn := range cns {
-					fmt.Fprintf(os.Stdout, "[%d] %s\n", i, cn)
-				}
-				fmt.Fprintf(os.Stdout, "----\n")
-			ask:
-				fmt.Fprintf(os.Stdout, "[0-%02d]: ", len(cns)-1)
-				var i int
-				_, err := fmt.Scanf("%d", &i)
-				if err != nil {
-					goto ask
-				}
-
-				if i >= 0 && i < len(cns) {
-					_, dbc := model.Connect(cns[i])
-					lc, _ := dbc.Count()
-					fmt.Fprintf(os.Stdout, "Using %s with %d prefixes\n", cns[i], lc)
-
-					c = markovianomatic.NewChain(prefixLen, verbose, cns[i])
-					iter := dbc.Find(bson.M{}).Iter()
-					var node model.Node
-					for iter.Next(&node) {
-						c.Set(node.Key, node.Choices)
-					}
-					if err := iter.Close(); err != nil {
-						fmt.Fprint(os.Stderr, "Error iterating the collection: %s\n", err.Error())
-						os.Exit(1)
-					}
-				} else {
-					goto ask
-				}
+				i := chooseCollection(cns)
+				c = load(prefixLen, verbose, cns[i])
 			} else {
-				// no/new here
-
-				fmt.Fprintf(os.Stdout, "Collection name: ")
-				var cn string
-				fmt.Scanf("%s", &cn)
-				c = markovianomatic.NewChain(prefixLen, verbose, cn)
+				c = newEmptyChain(prefixLen, verbose)
 			}
 		}
 
@@ -159,6 +120,59 @@ func askForConfirmation() bool {
 	return false
 }
 
+func chooseCollection(cns []string) int {
+	for i, cn := range cns {
+		fmt.Fprintf(os.Stdout, "[%d] %s\n", i, cn)
+	}
+	fmt.Fprintf(os.Stdout, "----\n")
+	msg := ""
+	for {
+		fmt.Fprintf(os.Stdout, "[0-%02d]: %s ", len(cns)-1, msg)
+		var i int
+		_, err := fmt.Scanf("%d", &i)
+		if err == nil && i >= 0 && i < len(cns) {
+			return i
+		} else {
+			msg = "(nope)"
+		}
+	}
+}
+
+// containsString returns true iff slice contains element
+func containsString(slice []string, element string) bool {
+	return !(posString(slice, element) == -1)
+}
+
+func newEmptyChain(prefixLen int, verbose bool) *markovianomatic.Chain {
+	fmt.Fprintf(os.Stdout, "Collection name: ")
+	var cn string
+	fmt.Scanf("%s", &cn)
+	return markovianomatic.NewChain(prefixLen, verbose, cn)
+}
+
+func load(prefixLen int, verbose bool, cn string) *markovianomatic.Chain {
+	_, dbc := model.Connect(cn)
+	lc, _ := dbc.Count()
+	fmt.Fprintf(os.Stdout, "Using %s with %d prefixes\n", cn, lc)
+	var c *markovianomatic.Chain
+	c = markovianomatic.NewChain(prefixLen, verbose, cn)
+	loadChain(c, dbc)
+
+	return c
+}
+
+func loadChain(c *markovianomatic.Chain, dbc *mgo.Collection) {
+	iter := dbc.Find(bson.M{}).Iter()
+	var node model.Node
+	for iter.Next(&node) {
+		c.Set(node.Key, node.Choices)
+	}
+	if err := iter.Close(); err != nil {
+		fmt.Fprint(os.Stderr, "Error iterating the collection: %s\n", err.Error())
+		os.Exit(1)
+	}
+}
+
 // posString returns the first index of element in slice.
 // If slice does not contain element, returns -1.
 func posString(slice []string, element string) int {
@@ -168,9 +182,4 @@ func posString(slice []string, element string) int {
 		}
 	}
 	return -1
-}
-
-// containsString returns true iff slice contains element
-func containsString(slice []string, element string) bool {
-	return !(posString(slice, element) == -1)
 }
