@@ -1,6 +1,7 @@
 package markovianomatic
 
-// TODO: save and load initial dictionary
+// DONE: save and load initial dictionary
+// TODO: parallelization on Save
 // DONE: keep list on values (do not lose the weight)
 // DONE: tabulation in printing
 // TODO: more filters
@@ -209,22 +210,62 @@ func (c *Chain) Save() {
 	}
 
 	sess, coll := model.Connect(cn)
-
 	defer sess.Close()
 
 	ks := c.Keys()
 	sort.Strings(ks)
 
-	fmt.Fprintf(os.Stdout, "Loading...")
+	var wg sync.WaitGroup
+	var workForce int = 5
+	ch := make(chan model.NewNodeInfo, workForce)
 
-	uiprogress.Start()
-	bar := uiprogress.AddBar(len(ks))
-	bar.AppendCompleted()
-	bar.PrependElapsed()
-	for _, x := range ks {
-		bar.Incr()
-		model.NewNode(x, c.chain[x]).Save(coll)
+	for i := 0; i < workForce; i++ {
+		wg.Add(1)
+		go func(x int) {
+			fmt.Printf("[%d] starting \n", x)
+			defer wg.Done()
+			var ni model.NewNodeInfo
+			var more bool
+
+			limiter := time.Tick(time.Millisecond * 100)
+			for {
+				fmt.Printf("[%d] waiting %d \n", x, len(ch))
+
+				<-limiter
+				ni, more = <-ch
+				if more {
+					fmt.Printf("[%d] received %s \n", x, ni)
+					model.NewNode(ni).Save(coll)
+				} else {
+					fmt.Printf("[%d] finishing \n", x)
+					return
+				}
+			}
+		}(i)
 	}
+
+	count := len(ks)
+	bar := uiprogress.AddBar(count).AppendCompleted().PrependElapsed()
+	bar.PrependFunc(func(b *uiprogress.Bar) string {
+		return fmt.Sprintf("Node (%d/%d)", b.Current(), count)
+	})
+	uiprogress.Start()
+
+	var mtx sync.Mutex
+	for i, x := range ks {
+		fmt.Printf("[boss] enqueuing %04d/%04d in %d\n", i, count, len(ch))
+		ch <- model.NewNodeInfo{x, c.chain[x]}
+		mtx.Lock()
+		// TODO: RAce condition here!
+		// bar.Incr()
+		mtx.Unlock()
+	}
+
+	fmt.Printf("[boss] closing \n")
+	uiprogress.Stop()
+	close(ch)
+	fmt.Printf("[boss] waiting \n")
+	wg.Wait()
 }
 
 func (c *Chain) insert(s string, p *Prefix) {

@@ -14,6 +14,8 @@ type Node struct {
 	Choices []string      `bson:"choices"`
 }
 
+const database string = "markovianomatic"
+
 func connect() (sess *mgo.Session, err error) {
 	uri := os.Getenv("MONGODB_URL")
 	if uri == "" {
@@ -38,6 +40,7 @@ func Collections(db *mgo.Database) (names []string, err error) {
 	}
 
 	for _, x := range all {
+		// TODO: add namespace to Collections
 		if x != "system.indexes" {
 			names = append(names, x)
 		}
@@ -47,14 +50,14 @@ func Collections(db *mgo.Database) (names []string, err error) {
 
 func Connect(cn string) (sess *mgo.Session, coll *mgo.Collection) {
 	sess, _ = connect()
-	coll = sess.DB("markovianomatic").C(cn)
+	coll = sess.DB(database).C(cn)
 
 	index := mgo.Index{
 		Key:        []string{"key"},
 		Unique:     true,
 		DropDups:   true,
 		Background: true,
-		Sparse:     true,
+		Sparse:     false,
 	}
 
 	err := coll.EnsureIndex(index)
@@ -70,11 +73,16 @@ func Database() *mgo.Database {
 	return sess.DB("markovianomatic")
 }
 
-func NewNode(k string, v []string) *Node {
+type NewNodeInfo struct {
+	K string
+	V []string
+}
+
+func NewNode(ni NewNodeInfo) *Node {
 	return &Node{
 		Id:      bson.NewObjectId(),
-		Key:     k,
-		Choices: v}
+		Key:     ni.K,
+		Choices: ni.V}
 }
 
 // Save persist a node into the given collection.
@@ -95,7 +103,8 @@ func (n *Node) Save(coll *mgo.Collection) bool {
 	}
 
 	if operr != nil {
-		fmt.Fprintf(os.Stderr, "Error upserting node entry: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "Error upserting node entry: %s\n", operr.Error())
+		return false
 	}
 	return true
 }
