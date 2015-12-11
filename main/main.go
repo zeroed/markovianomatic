@@ -1,6 +1,7 @@
+//+build !test
+
 package main
 
-//+build !test
 // go test -v -cover -tags test
 
 import (
@@ -59,12 +60,15 @@ func main() {
 		var c *markovianomatic.Chain
 		cns, _ := model.Collections(model.Database())
 
+		var ok bool
+		var what = "append"
 		if len(cns) == 0 {
 			fmt.Fprintf(os.Stderr, "There are no available PrefixBase. Start from scratch\n")
 			c = newEmptyChain(prefixLen, verbose)
 		} else {
-			fmt.Fprintf(os.Stdout, "Want to [use/append/delete] an existing DB? [no(new)] ")
-			if askForConfirmation() {
+			fmt.Fprintf(os.Stdout, "Want to [u]se, [a]ppend, [d]elete an existing DB? [n]o(new) ")
+			ok, what = askForConfirmation()
+			if ok {
 				i := chooseCollection(cns)
 				c = load(prefixLen, verbose, cns[i])
 			} else {
@@ -72,10 +76,21 @@ func main() {
 			}
 		}
 
-		if len(file) == 0 {
-			c.Build(os.Stdin)
-		} else {
-			c.Load(file)
+		if what == "append" {
+			if len(file) == 0 {
+				c.Build(os.Stdin)
+			} else {
+				c.Load(file)
+			}
+			if len(c.Keys()) > 0 {
+				if verbose {
+					c.Pretty()
+				}
+				c.Save()
+			} else {
+				fmt.Fprintf(os.Stdout, "Empty text map. Cannot generate text\n")
+				os.Exit(1)
+			}
 		}
 
 		b := new(bytes.Buffer)
@@ -93,7 +108,7 @@ func main() {
 // until it gets a valid response from the user. Typically, you should
 // use fmt to print out a question before calling askForConfirmation.
 // E.g. fmt.Println("WARNING: Are you sure? (yes/no)")
-func askForConfirmation() bool {
+func askForConfirmation() (bool, string) {
 	const dflt string = "no"
 	var response string
 
@@ -102,22 +117,27 @@ func askForConfirmation() bool {
 		response = dflt
 	}
 
-	okayResponses := []string{"y", "Y", "yes", "Yes", "YES"}
-	nokayResponses := []string{"n", "N", "no", "No", "NO", "new"}
+	useResponses := []string{"u", "U", "use", "Use", "USE"}
+	appendResponses := []string{"a", "A", "app", "append", "Append", "App", "APPEND", "APP"}
+	nokayResponses := []string{"n", "N", "no", "No", "NO"}
+	newResponses := []string{"new", "NEW", "New"}
 	exitResponses := []string{"exit", "quit", "Q", "q"}
+	// okayResponses := []string{"y", "Y", "yes", "Yes", "YES"}
 	// deleteResponses := []string{"d", "D", "delete", "Delete", "del", "DELETE"}
-	if containsString(okayResponses, response) {
-		return true
-	} else if containsString(nokayResponses, response) {
-		return false
+
+	if containsString(useResponses, response) {
+		return true, "use"
+	} else if containsString(appendResponses, response) {
+		return true, "append"
+	} else if containsString(append(nokayResponses, newResponses...), response) {
+		return false, "new"
 	} else if containsString(exitResponses, response) {
 		fmt.Fprintf(os.Stderr, "Bye\n\n")
 		os.Exit(1)
 	} else {
-		fmt.Fprintf(os.Stderr, "Please type yes or no and then press enter:\n")
-		return askForConfirmation()
+		fmt.Fprintf(os.Stderr, "Please type use|append|new and then press enter: ")
 	}
-	return false
+	return askForConfirmation()
 }
 
 func chooseCollection(cns []string) int {
@@ -132,9 +152,8 @@ func chooseCollection(cns []string) int {
 		_, err := fmt.Scanf("%d", &i)
 		if err == nil && i >= 0 && i < len(cns) {
 			return i
-		} else {
-			msg = "(nope)"
 		}
+		msg = "(nope)"
 	}
 }
 
@@ -168,7 +187,7 @@ func loadChain(c *markovianomatic.Chain, dbc *mgo.Collection) {
 		c.Set(node.Key, node.Choices)
 	}
 	if err := iter.Close(); err != nil {
-		fmt.Fprint(os.Stderr, "Error iterating the collection: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "Error iterating the collection: %s\n", err.Error())
 		os.Exit(1)
 	}
 }
