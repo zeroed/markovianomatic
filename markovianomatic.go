@@ -27,6 +27,8 @@ import (
 	"github.com/zeroed/markovianomatic/model"
 )
 
+// StringMap is a short name to address a type of "node" where a string
+// is a key for a list of choices
 type StringMap map[string][]string
 
 // Chain contains a map ("chain") of prefixes to a list of suffixes.
@@ -61,13 +63,12 @@ func (c *Chain) Keys() []string {
 	return keys
 }
 
-// Rkey return a random key from the chain starters
+// RKey return a random key from the chain starters
 func (c *Chain) RKey() string {
 	if l := len(c.starters); l > 0 {
 		return c.starters[rand.Intn(l)]
-	} else {
-		return ""
 	}
+	return ""
 }
 
 // String return a printable representation of the Chain
@@ -84,11 +85,6 @@ func (c *Chain) String() string {
 		s = append(s, fmt.Sprintf("[%s]: %s", k, strings.Join(c.chain[k], ", ")))
 	}
 	return strings.Join(s, "\n")
-}
-
-// Length returns the length of the chain.
-func (c *Chain) Length() int {
-	return len(c.chain)
 }
 
 // Prefix returns a value corresponding to a given prefix.
@@ -172,7 +168,7 @@ func (c *Chain) Build(r io.Reader) {
 				i = 0
 				c.insert(s, &pf)
 			} else {
-				i += 1
+				i++
 				if err != nil && err.Error() != "unexpected newline" {
 					fmt.Fprintf(os.Stderr, "Scan error: %s\n", err.Error())
 				} else {
@@ -203,7 +199,7 @@ func timeName() string {
 
 // Save method persist (save or update) the chain on the disk
 func (c *Chain) Save() {
-	var cn string = c.collection
+	var cn = c.collection
 	if c.collection == "" {
 		cn = timeName()
 		c.collection = cn
@@ -216,55 +212,44 @@ func (c *Chain) Save() {
 	sort.Strings(ks)
 
 	var wg sync.WaitGroup
-	var workForce int = 5
+	var workForce = 5
 	ch := make(chan model.NewNodeInfo, workForce)
 
 	for i := 0; i < workForce; i++ {
 		wg.Add(1)
-		go func(x int) {
-			fmt.Printf("[%d] starting \n", x)
+		go func() {
 			defer wg.Done()
 			var ni model.NewNodeInfo
 			var more bool
 
-			limiter := time.Tick(time.Millisecond * 100)
 			for {
-				fmt.Printf("[%d] waiting %d \n", x, len(ch))
-
-				<-limiter
 				ni, more = <-ch
 				if more {
-					fmt.Printf("[%d] received %s \n", x, ni)
 					model.NewNode(ni).Save(coll)
 				} else {
-					fmt.Printf("[%d] finishing \n", x)
 					return
 				}
 			}
-		}(i)
+		}()
 	}
 
 	count := len(ks)
-	bar := uiprogress.AddBar(count).AppendCompleted().PrependElapsed()
+	bar := uiprogress.AddBar(count)
+	bar.AppendCompleted()
+	bar.PrependElapsed()
 	bar.PrependFunc(func(b *uiprogress.Bar) string {
 		return fmt.Sprintf("Node (%d/%d)", b.Current(), count)
 	})
-	uiprogress.Start()
 
-	var mtx sync.Mutex
-	for i, x := range ks {
-		fmt.Printf("[boss] enqueuing %04d/%04d in %d\n", i, count, len(ch))
+	uiprogress.Start()
+	for _, x := range ks {
 		ch <- model.NewNodeInfo{x, c.chain[x]}
-		mtx.Lock()
-		// TODO: RAce condition here!
-		// bar.Incr()
-		mtx.Unlock()
+
+		bar.Incr()
 	}
 
-	fmt.Printf("[boss] closing \n")
 	uiprogress.Stop()
 	close(ch)
-	fmt.Printf("[boss] waiting \n")
 	wg.Wait()
 }
 
@@ -280,7 +265,12 @@ func (c *Chain) insert(s string, p *Prefix) {
 	p.Shift(s)
 }
 
-//Load reads the content from a file and build a Chain
+// Length returns the length of the chain.
+func (c *Chain) Length() int {
+	return len(c.chain)
+}
+
+// Load reads the content from a file and build a Chain
 func (c *Chain) Load(name string) {
 	file, err := os.Open(name)
 	if err != nil {
@@ -336,10 +326,7 @@ func sanitise(s string, strict bool) string {
 
 // Generate returns a string of at most n words generated from Chain.
 func (c *Chain) Generate(w io.Writer, n int) io.Writer {
-	if len(c.Keys()) > 0 {
-		c.Pretty()
-		c.Save()
-	} else {
+	if len(c.Keys()) < 0 {
 		fmt.Fprintf(os.Stdout, "Empty text map. Cannot generate text\n")
 		return w
 	}
@@ -347,7 +334,7 @@ func (c *Chain) Generate(w io.Writer, n int) io.Writer {
 	if n < 1 {
 		panic("Prefix too short")
 	} else {
-		fmt.Fprintf(os.Stdout, "%d prefixes, prefixes %d long. generating text ...\n", c.Length(), c.prefixLen)
+		fmt.Fprintf(os.Stdout, "%d prefixes, prefixes %d long. generating text ...\n\n", c.Length(), c.prefixLen)
 	}
 
 	p := NewPrefix(c.prefixLen)
@@ -382,9 +369,11 @@ func (c *Chain) Generate(w io.Writer, n int) io.Writer {
 		p.Shift(next)
 		k = p.String()
 	}
+
 	return w
 }
 
+// Set adds a pair "key choices" into the chain
 func (c *Chain) Set(k string, v []string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
