@@ -38,7 +38,7 @@ Want to [u]se, [a]ppend, [d]elete an existing DB? [n]o(new): a
 ----
 [0-00]:  0
 
-Using zzz with 35101 prefixes
+Using witt01 with 35101 prefixes
 Node (35101/35101)   13s [====================================================================] 100%
 
 35101 prefixes, prefixes 2 long. generating text ...
