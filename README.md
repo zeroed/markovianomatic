@@ -3,6 +3,50 @@
 Inspired by "The Go Authors"
 source: [codewalk/markov](https://golang.org/doc/codewalk/markov/)
 
+## Options
+
+```
+$ main/main -help
+NAME:
+   Markovianomatic - Build a random text with Markov-ish rules
+
+USAGE:
+   main/main [global options] command [command options] [arguments...]
+
+VERSION:
+   0.0.0
+
+COMMANDS:
+   help, h  Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --words "100"  maximum number of words to print
+   --prefix "2"   prefix Length in words
+   --file     text file to use as seed
+   --verbose    I wanna read useless stuff
+   --help, -h   show help
+   --version, -v  print the version
+```
+
+Sample:
+
+```
+$ ./main -file ~/Downloads/wittgenstein.txt
+no connection string provided: using Mongo localhost
+Want to [u]se, [a]ppend, [d]elete an existing DB? [n]o(new): a
+[0] witt01
+----
+[0-00]:  0
+
+Using zzz with 35101 prefixes
+Node (35101/35101)   13s [====================================================================] 100%
+
+35101 prefixes, prefixes 2 long. generating text ...
+
+se vi è gusto il gradevole dal bello anche nel campo pratico egli semplicemente afferma che il bello ma anche il giudizio estetico non è nelle cose non ci simpegna per risolvere questo problema la critica del giudizio critica della ragion pratica che ci fosse una corrispondenza tra limperativo categorico e le inclinazioni se vive questa frustrazione dovuta allintenzionalità della morale kantiana ma della morale la buona volontà è una facoltà analitica che si chiama riflettente perché mentre nel giudizio riflettente è un giudizio conoscitivo il giudizio analitico nel secondo caso ci indica la forma del volere conforme a leggi
+
+```
+
 ## Original documentation
 
      // Copyright 2011 The Go Authors.  All rights reserved.
