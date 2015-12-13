@@ -1,13 +1,5 @@
 package markovianomatic
 
-// DONE: save and load initial dictionary
-// TODO: parallelization on Save
-// DONE: keep list on values (do not lose the weight)
-// DONE: tabulation in printing
-// TODO: more filters
-// TODO: check correctness
-// TODO: table menu: load/new/destroy
-
 import (
 	"bufio"
 	"fmt"
